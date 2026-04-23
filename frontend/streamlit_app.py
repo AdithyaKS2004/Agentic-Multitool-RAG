@@ -1,5 +1,6 @@
 import streamlit as st
 import requests
+from agent_controller import decide_tool
 
 st.set_page_config(page_title="Agentic RAG System", layout="wide")
 
@@ -13,6 +14,8 @@ uploaded_files = st.sidebar.file_uploader("Upload PDFs", type=["pdf"], accept_mu
 st.subheader("Ask a Question")
 
 user_query = st.text_input("Enter your question:")
+tool = decide_tool(user_query)
+st.write(f"🧠 Agent selected tool: {tool}")
 
 if st.button("Submit"):
     if user_query:
@@ -20,9 +23,12 @@ if st.button("Submit"):
             try:
                 response = requests.post(
                     "http://localhost:8000/query",
-                    json={"query": user_query}
+                    json={
+                        "query": user_query,
+                        "tool": tool
+                    }
                 )
-
+                
                 if response.status_code == 200:
                     result = response.json()
 
