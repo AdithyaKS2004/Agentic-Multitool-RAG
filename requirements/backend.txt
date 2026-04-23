@@ -1,0 +1,14 @@
+fastapi
+uvicorn
+langchain
+langchain-community
+langgraph
+faiss-cpu
+chromadb
+sentence-transformers
+transformers
+rank-bm25
+pypdf
+pdfplumber
+duckduckgo-search
+python-dotenv

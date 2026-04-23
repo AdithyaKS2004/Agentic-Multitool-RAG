@@ -1,0 +1,12 @@
+langchain
+langchain-community
+faiss-cpu
+chromadb
+sentence-transformers
+transformers
+rank-bm25
+pypdf
+pdfplumber
+numpy
+pandas
+scikit-learn
