@@ -210,3 +210,52 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+# Virtual Environment
+venv/
+env/
+
+# Python Cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Environment Variables
+.env
+
+# Logs
+*.log
+
+# OS Files
+.DS_Store
+Thumbs.db
+
+# IDE Files
+.vscode/
+.idea/
+
+# Vector Databases / Embeddings (VERY IMPORTANT)
+vectorstore/
+*.faiss
+*.bin
+*.pkl
+
+# Model Files (IMPORTANT)
+models/
+*.gguf
+*.pt
+*.pth
+
+# Data Files (OPTIONAL - depends on your use)
+data/pdfs/
+*.pdf
+
+# Temporary Files
+*.tmp
+*.temp
+
+# Streamlit cache (if any)
+.streamlit/
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints/
