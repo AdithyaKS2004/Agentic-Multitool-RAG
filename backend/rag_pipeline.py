@@ -1,93 +1,32 @@
 # backend/rag_pipeline.py
 
-from langchain_community.document_loaders import PyPDFLoader
-from langchain_text_splitters import RecursiveCharacterTextSplitter
-from langchain_huggingface import HuggingFaceEmbeddings
+from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_community.vectorstores import FAISS
 from rank_bm25 import BM25Okapi
 
-'''from langchain_huggingface import HuggingFaceEmbeddings
-from langchain_community.vectorstores import FAISS'''
+# ================================
+# 🔹 CONFIG
+# ================================
 
-def load_pdfs(pdf_paths):
-    documents = []
-
-    for path in pdf_paths:
-        loader = PyPDFLoader(path)
-        docs = loader.load()
-        documents.extend(docs)
-
-    return documents
+VECTORSTORE_PATH = "vectorstore"
+EMBEDDING_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
 
 
-def split_documents(documents):
-    splitter = RecursiveCharacterTextSplitter(
-        chunk_size=2000,
-        chunk_overlap=100
-    )
+# ================================
+# 🔹 EMBEDDINGS (Single Source of Truth)
+# ================================
 
-    chunks = splitter.split_documents(documents)
-    return chunks
-
-    
-
-'''def create_embeddings():
-    embeddings = HuggingFaceEmbeddings(
-        model_name="all-MiniLM-L6-v2"
-    )
-    return embeddings
-
-
-
-def create_vectorstore(chunks):
-    embeddings = create_embeddings()
-    vectorstore = FAISS.from_documents(chunks, embeddings)
-    return vectorstore
-
-
-def save_vectorstore(vectorstore, path="vectorstore"):
-    vectorstore.save_local(path)
-
-
-def load_vectorstore():
-    embeddings = HuggingFaceEmbeddings(
-        model_name="sentence-transformers/all-MiniLM-L6-v2"
-    )
-
-    return FAISS.load_local(
-        "vectorstore",
-        embeddings,
-        allow_dangerous_deserialization=True
-    )
-
-
-def retrieve_docs(vectorstore, query):
-    return vectorstore.similarity_search(query, k=3)'''
-
-
-
-
-# ✅ Single source of truth for embeddings
 def get_embeddings():
     return HuggingFaceEmbeddings(
-        model_name="sentence-transformers/all-MiniLM-L6-v2"
+        model_name=EMBEDDING_MODEL
     )
 
 
-# ✅ Create vectorstore from chunks
-def create_vectorstore(chunks):
-    embeddings = get_embeddings()
-    vectorstore = FAISS.from_documents(chunks, embeddings)
-    return vectorstore
+# ================================
+# 🔹 VECTORSTORE (LOAD ONLY — NO CREATION HERE)
+# ================================
 
-
-# ✅ Save vectorstore locally
-def save_vectorstore(vectorstore, path="vectorstore"):
-    vectorstore.save_local(path)
-
-
-# ✅ Load vectorstore safely
-def load_vectorstore(path="vectorstore"):
+def load_vectorstore(path=VECTORSTORE_PATH):
     embeddings = get_embeddings()
 
     return FAISS.load_local(
@@ -97,67 +36,97 @@ def load_vectorstore(path="vectorstore"):
     )
 
 
-# ✅ Retrieve top-k similar documents
+# ================================
+# 🔹 RETRIEVAL (FAISS)
+# ================================
+
 def retrieve_docs(vectorstore, query, k=5):
     return vectorstore.similarity_search(query, k=k)
 
-def generate_answer(query, docs):
-    # Combine retrieved context
-    context = " ".join(docs)
 
-    # Basic filtering (optional improvement)
-    sentences = context.split(". ")
+# ================================
+# 🔹 BM25 (KEYWORD SEARCH)
+# ================================
 
-    # Pick most relevant sentences
-    relevant = [s for s in sentences if any(word in s.lower() for word in query.lower().split())]
-
-    if not relevant:
-        relevant = sentences[:3]
-
-    answer = ". ".join(relevant[:3])
-
-    return answer
-
-def create_bm25_index(chunks):
-    texts = [doc.page_content for doc in chunks]
+def create_bm25_index(docs):
+    texts = [doc.page_content for doc in docs]
     tokenized = [text.split() for text in texts]
 
     bm25 = BM25Okapi(tokenized)
 
     return bm25, texts
 
-def hybrid_retrieve(query, vectorstore, bm25, texts, k=3):
-    # 🔹 Semantic search
+
+# ================================
+# 🔹 HYBRID RETRIEVAL
+# ================================
+
+def hybrid_retrieve(query, vectorstore, bm25, texts, k=5):
+    # 🔹 Semantic search (FAISS)
     semantic_docs = vectorstore.similarity_search(query, k=k)
 
-    # 🔹 Keyword search
+    semantic_texts = [doc.page_content for doc in semantic_docs]
+
+    # 🔹 Keyword search (BM25)
     tokenized_query = query.split()
     scores = bm25.get_scores(tokenized_query)
 
     top_indices = sorted(range(len(scores)), key=lambda i: scores[i], reverse=True)[:k]
-    keyword_docs = [texts[i] for i in top_indices]
+    keyword_texts = [texts[i] for i in top_indices]
 
-    # 🔹 Combine results
-    combined = []
-
-    for doc in semantic_docs:
-        combined.append(doc.page_content)
-
-    combined.extend(keyword_docs)
+    # 🔹 Combine + deduplicate
+    combined = list(dict.fromkeys(semantic_texts + keyword_texts))
 
     return combined[:k]
 
+
+# ================================
+# 🔹 ANSWER GENERATION (IMPROVED)
+# ================================
+
+def generate_answer(query, docs):
+    """
+    docs: list of strings (NOT Document objects)
+    """
+
+    if not docs:
+        return "No relevant information found."
+
+    context = " ".join(docs)
+
+    # simple relevance filtering
+    sentences = context.split(". ")
+
+    query_words = set(query.lower().split())
+
+    scored = []
+    for sentence in sentences:
+        score = sum(1 for word in query_words if word in sentence.lower())
+        scored.append((score, sentence))
+
+    # sort by relevance
+    scored.sort(reverse=True, key=lambda x: x[0])
+
+    top_sentences = [s for _, s in scored[:3]]
+
+    return ". ".join(top_sentences)
+
+
+# ================================
+# 🔹 LOAD EVERYTHING (ENTRY POINT)
+# ================================
+
 def load_all():
+    # 🔹 Load vectorstore (from processing)
     vectorstore = load_vectorstore()
 
-    # load or recreate chunks
-    docs = load_pdfs(["data/pdfs/sample.pdf"])
-    chunks = split_documents(docs)
+    # 🔹 Get documents from vectorstore (for BM25)
+    docs = vectorstore.similarity_search("", k=1000)  # get all-ish docs
 
-    bm25, texts = create_bm25_index(chunks)
+    # fallback if empty
+    if not docs:
+        raise ValueError("Vectorstore is empty. Run processing first.")
+
+    bm25, texts = create_bm25_index(docs)
 
     return vectorstore, bm25, texts
-
-
-
-
