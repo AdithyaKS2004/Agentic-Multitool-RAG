@@ -40,7 +40,7 @@ def load_vectorstore(path=VECTORSTORE_PATH):
 # 🔹 RETRIEVAL (FAISS)
 # ================================
 
-def retrieve_docs(vectorstore, query, k=5):
+def retrieve_docs(vectorstore, query, k=4):
     return vectorstore.similarity_search(query, k=k)
 
 
@@ -61,7 +61,7 @@ def create_bm25_index(docs):
 # 🔹 HYBRID RETRIEVAL
 # ================================
 
-def hybrid_retrieve(query, vectorstore, bm25, texts, k=5):
+def hybrid_retrieve(query, vectorstore, bm25, texts, k=4):
     # 🔹 Semantic search (FAISS)
     semantic_docs = vectorstore.similarity_search(query, k=k)
 
@@ -83,7 +83,7 @@ def hybrid_retrieve(query, vectorstore, bm25, texts, k=5):
 # ================================
 # 🔹 ANSWER GENERATION (IMPROVED)
 # ================================
-
+'''
 def generate_answer(query, docs):
     """
     docs: list of strings (NOT Document objects)
@@ -92,8 +92,9 @@ def generate_answer(query, docs):
     if not docs:
         return "No relevant information found."
 
-    context = " ".join(docs)
-
+    context = "\n\n".join(
+        [doc["content"] for doc in docs]
+    )
     # simple relevance filtering
     sentences = context.split(". ")
 
@@ -110,8 +111,72 @@ def generate_answer(query, docs):
     top_sentences = [s for _, s in scored[:3]]
 
     return ". ".join(top_sentences)
+'''
 
+def generate_answer(query, docs):
 
+    query_words = [
+        word.lower()
+        for word in query.split()
+        if len(word) > 2
+    ]
+
+    scored_chunks = []
+
+    # ======================================
+    # 🔹 SCORE CHUNKS
+    # ======================================
+
+    for doc in docs:
+
+        content = doc["content"]
+
+        content_lower = content.lower()
+
+        keyword_score = 0
+
+        for word in query_words:
+
+            if query.lower() in content_lower:
+                keyword_score += 15
+        scored_chunks.append(
+            (
+                keyword_score,
+                content,
+                doc
+            )
+        )
+
+    # ======================================
+    # 🔹 SORT BY RELEVANCE
+    # ======================================
+
+    scored_chunks.sort(
+        key=lambda x: x[0],
+        reverse=True
+    )
+
+    # ======================================
+    # 🔹 TAKE BEST CHUNKS
+    # ======================================
+
+    best_chunks = scored_chunks[:2]
+
+    # ======================================
+    # 🔹 FORMAT ANSWER
+    # ======================================
+
+    answer_parts = []
+
+    for score, content, doc in best_chunks:
+
+        clean = content.replace("\n", " ")
+
+        answer_parts.append(clean)
+
+    answer = "\n\n".join(answer_parts)
+
+    return answer[:1500]
 # ================================
 # 🔹 LOAD EVERYTHING (ENTRY POINT)
 # ================================

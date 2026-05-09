@@ -78,41 +78,56 @@ def handle_query(request: QueryRequest):
 # ======================================
 
 @app.post("/upload-summary")
-async def upload_summary(file: UploadFile = File(...)):
-
-    # create uploads folder
-    os.makedirs("uploads", exist_ok=True)
-
-    file_path = f"uploads/{file.filename}"
-
-    # save uploaded file
-    with open(file_path, "wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
-
-    # summarize
-    result = summarize_uploaded_document(file_path)
-
-    return {
-        "filename": file.filename,
-        "summary": result["summary"],
-        "chunks_processed": result["num_chunks"]
-    }
-
-@app.post("/upload-document")
-async def upload_document(file: UploadFile = File(...)):
+async def upload_summary(files: list[UploadFile] = File(...)):
 
     os.makedirs("uploads", exist_ok=True)
 
-    file_path = f"uploads/{file.filename}"
+    uploaded_files = []
 
-    with open(file_path, "wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
+    combined_text = ""
 
-    process_uploaded_document(file_path)
+    for file in files:
+
+        file_path = f"uploads/{file.filename}"
+
+        with open(file_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+
+        uploaded_files.append(file.filename)
+
+        # summarize each file
+        result = summarize_uploaded_document(file_path)
+
+        combined_text += f"\n\n=== {file.filename} ===\n"
+        combined_text += result["summary"]
 
     return {
         "status": "success",
-        "filename": file.filename
+        "files_uploaded": uploaded_files,
+        "summary": combined_text
+    }
+@app.post("/upload-document")
+async def upload_document(files: list[UploadFile] = File(...)):
+
+    os.makedirs("uploads", exist_ok=True)
+
+    uploaded_files = []
+
+    for file in files:
+
+        file_path = f"uploads/{file.filename}"
+
+        with open(file_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+
+        uploaded_files.append(file.filename)
+
+    # process ALL uploaded PDFs
+    process_uploaded_document("uploads")
+
+    return {
+        "status": "success",
+        "files_uploaded": uploaded_files
     }
 
 @app.post("/ask-document")

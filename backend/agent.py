@@ -5,6 +5,7 @@ import ollama
 from backend.tools.rag_tool import rag_tool
 from backend.tools.web_tool import web_search
 from backend.tools.summarizer_tool import summarizer_tool
+
 from backend.config import OLLAMA_MODEL
 from backend.memory import save_memory, get_memory
 
@@ -34,97 +35,46 @@ def ask_llm(prompt: str):
 
 def choose_tool(query: str):
 
-    planner_prompt = f"""
-    You are an intelligent AI planner.
+    # Faster rule-based routing
+    # avoids unnecessary LLM latency
 
-    Decide which tool is best for the user query.
+    query_lower = query.lower()
 
-    Available tools:
+    # 🔹 web queries
+    web_keywords = [
+        "latest",
+        "news",
+        "today",
+        "recent",
+        "current",
+        "update"
+    ]
 
-    1. RAG
-    - Use for:
-      document-based questions,
-      explanations,
-      domain knowledge,
-      research-related questions
+    # 🔹 summarizer queries
+    summarizer_keywords = [
+        "summarize",
+        "summary",
+        "overview",
+        "brief"
+    ]
 
-    2. WEB
-    - Use for:
-      latest news,
-      current events,
-      real-time information,
-      recent updates
+    # 🔹 comparison queries
+    comparison_keywords = [
+        "compare",
+        "difference",
+        "similarities"
+    ]
 
-    3. SUMMARIZER
-    - Use for:
-      summarizing long content,
-      summarizing topics,
-      concise overviews
+    # WEB
+    if any(word in query_lower for word in web_keywords):
+        return "WEB"
 
-    User Query:
-    {query}
+    # SUMMARIZER
+    if any(word in query_lower for word in summarizer_keywords):
+        return "SUMMARIZER"
 
-    IMPORTANT:
-    Reply ONLY with one word:
-    RAG
-    WEB
-    or
-    SUMMARIZER
-    """
-
-    try:
-        decision = ask_llm(planner_prompt).strip().upper()
-
-        if "WEB" in decision:
-            return "WEB"
-
-        elif "SUMMARIZER" in decision:
-            return "SUMMARIZER"
-
-        return "RAG"
-
-    except Exception:
-        return "RAG"
-
-
-# ======================================
-# 🔹 REFLECTOR
-# ======================================
-
-def reflect_answer(query, tool_output):
-
-    reflection_prompt = f"""
-    You are an AI evaluator.
-
-    Evaluate the quality of the tool output.
-
-    User Query:
-    {query}
-
-    Tool Output:
-    {tool_output}
-
-    Determine whether the output is:
-    GOOD
-    or
-    BAD
-
-    Reply ONLY with:
-    GOOD
-    or
-    BAD
-    """
-
-    try:
-        reflection = ask_llm(reflection_prompt).strip().upper()
-
-        if "BAD" in reflection:
-            return "BAD"
-
-        return "GOOD"
-
-    except Exception:
-        return "UNKNOWN"
+    # RAG by default
+    return "RAG"
 
 
 # ======================================
@@ -133,12 +83,53 @@ def reflect_answer(query, tool_output):
 
 def generate_final_answer(query, tool_used, tool_output):
 
+    # ======================================
+    # 🔹 RAG-GROUNDED GENERATION
+    # ======================================
+
+    if tool_used == "RAG":
+
+        if isinstance(tool_output, dict):
+
+            retrieved_answer = tool_output.get(
+                "answer",
+                ""
+            )
+
+            prompt = f"""
+            You are a highly accurate AI assistant.
+
+            Answer the question ONLY using
+            the provided context.
+
+            DO NOT add outside knowledge.
+            DO NOT hallucinate.
+            DO NOT invent information.
+
+            User Question:
+            {query}
+
+            Retrieved Context:
+            {retrieved_answer}
+
+            Instructions:
+            - give a detailed explanation
+            - structure answer clearly
+            - keep answer relevant
+            - include key points
+            - avoid repetition
+            """
+
+            return ask_llm(prompt)
+
+    # ======================================
+    # 🔹 OTHER TOOLS
+    # ======================================
+
     memory = get_memory()
 
     final_prompt = f"""
     You are an intelligent AI assistant.
-
-    Use the provided tool output to answer the user query.
 
     Conversation Memory:
     {memory}
@@ -152,17 +143,15 @@ def generate_final_answer(query, tool_used, tool_output):
     Tool Output:
     {tool_output}
 
-    Instructions:
-    - Give a clear answer
-    - Be concise but informative
-    - Structure the response properly
-    - If information is limited, say so honestly
+    Generate a concise and accurate answer.
     """
 
     try:
+
         return ask_llm(final_prompt)
 
     except Exception as e:
+
         return f"Error generating final answer: {str(e)}"
 
 
@@ -175,12 +164,15 @@ def execute_tool(tool, query):
     try:
 
         if tool == "WEB":
+
             return web_search(query)
 
         elif tool == "SUMMARIZER":
+
             return summarizer_tool(query)
 
         else:
+
             return rag_tool(query)
 
     except Exception as e:
@@ -197,9 +189,6 @@ def execute_tool(tool, query):
 
 def agent(query: str):
 
-    # default quality
-    quality = "UNKNOWN"
-
     # ==========================
     # STEP 1 → PLAN
     # ==========================
@@ -211,33 +200,22 @@ def agent(query: str):
     tool_output = execute_tool(tool, query)
 
     # ==========================
-    # STEP 3 → REFLECT
+    # STEP 3 → SIMPLE CONFIDENCE
     # ==========================
-    quality = reflect_answer(query, tool_output)
-   
+    quality = "GOOD"
+
+    if not tool_output:
+
+        quality = "LOW_CONFIDENCE"
+
+    elif isinstance(tool_output, dict):
+
+        if "error" in tool_output:
+
+            quality = "ERROR"
+
     # ==========================
-    # STEP 4 → FALLBACK
-    # ==========================
-    if quality == "BAD":
-
-        # fallback strategy
-        if tool == "WEB":
-
-            tool = "RAG"
-            tool_output = execute_tool(tool, query)
-
-        elif tool == "RAG":
-
-            tool = "SUMMARIZER"
-            tool_output = execute_tool(tool, query)
-
-        else:
-
-            tool = "RAG"
-            tool_output = execute_tool(tool, query)
-    
-    # ==========================
-    # STEP 5 → FINAL RESPONSE
+    # STEP 4 → FINAL RESPONSE
     # ==========================
     answer = generate_final_answer(
         query,
@@ -246,12 +224,12 @@ def agent(query: str):
     )
 
     # ==========================
-    # STEP 6 → SAVE MEMORY
+    # STEP 5 → SAVE MEMORY
     # ==========================
     save_memory(query, answer)
 
     # ==========================
-    # STEP 7 → DEBUG LOG
+    # STEP 6 → DEBUG LOG
     # ==========================
     response_data = {
         "tool_used": tool,
@@ -264,6 +242,6 @@ def agent(query: str):
     print(response_data)
 
     # ==========================
-    # STEP 8 → RETURN
+    # STEP 7 → RETURN
     # ==========================
     return response_data

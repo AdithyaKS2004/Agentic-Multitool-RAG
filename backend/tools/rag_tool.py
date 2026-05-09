@@ -27,7 +27,7 @@ def rag_tool(query: str):
         vectorstore=vectorstore,
         bm25=bm25,
         texts=texts,
-        k=5
+        k=4
     )
 
     # 🔹 Generate answer

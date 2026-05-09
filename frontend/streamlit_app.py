@@ -1,3 +1,5 @@
+# frontend/streamlit_app.py
+
 import streamlit as st
 import requests
 
@@ -29,8 +31,8 @@ if "uploaded" not in st.session_state:
 if "summary" not in st.session_state:
     st.session_state.summary = ""
 
-if "filename" not in st.session_state:
-    st.session_state.filename = ""
+if "filenames" not in st.session_state:
+    st.session_state.filenames = []
 
 
 # ======================================
@@ -38,7 +40,13 @@ if "filename" not in st.session_state:
 # ======================================
 
 st.title("📄 Agentic Multi-Tool RAG System")
-st.markdown("Upload documents, generate summaries, and ask questions using AI.")
+
+st.markdown(
+    """
+    Upload multiple PDF documents, generate summaries,
+    ask questions, and compare documents using AI.
+    """
+)
 
 
 # ======================================
@@ -46,18 +54,29 @@ st.markdown("Upload documents, generate summaries, and ask questions using AI.")
 # ======================================
 
 uploaded_file = st.file_uploader(
-    "Upload PDF Document",
-    type=["pdf"]
+    "Upload PDF Documents",
+    type=["pdf"],
+    accept_multiple_files=True
 )
+
+
+# ======================================
+# 🔹 DISPLAY UPLOADED FILES
+# ======================================
+
+if uploaded_file:
+
+    st.subheader("📂 Uploaded Documents")
+
+    for file in uploaded_file:
+        st.write(f"• {file.name}")
 
 
 # ======================================
 # 🔹 DOCUMENT PROCESSING
 # ======================================
 
-if uploaded_file is not None:
-
-    st.success(f"Uploaded: {uploaded_file.name}")
+if uploaded_file:
 
     col1, col2 = st.columns(2)
 
@@ -73,13 +92,20 @@ if uploaded_file is not None:
 
                 try:
 
-                    files = {
-                        "file": (
-                            uploaded_file.name,
-                            uploaded_file.getvalue(),
-                            "application/pdf"
+                    files = []
+
+                    for file in uploaded_file:
+
+                        files.append(
+                            (
+                                "files",
+                                (
+                                    file.name,
+                                    file.getvalue(),
+                                    "application/pdf"
+                                )
+                            )
                         )
-                    }
 
                     response = requests.post(
                         f"{BACKEND_URL}/upload-summary",
@@ -89,12 +115,19 @@ if uploaded_file is not None:
                     result = response.json()
 
                     st.session_state.uploaded = True
-                    st.session_state.summary = result["summary"]
-                    st.session_state.filename = uploaded_file.name
+                    st.session_state.summary = result.get(
+                        "summary",
+                        "No summary generated"
+                    )
+
+                    st.session_state.filenames = [
+                        file.name for file in uploaded_file
+                    ]
+
+                    st.success("Summary generated successfully")
 
                 except Exception as e:
                     st.error(f"Error: {str(e)}")
-
 
     # ==========================
     # 🔹 PROCESS FOR QA
@@ -104,17 +137,26 @@ if uploaded_file is not None:
 
         if st.button("Enable Document QA"):
 
-            with st.spinner("Preparing document for question answering..."):
+            with st.spinner(
+                "Preparing documents for question answering..."
+            ):
 
                 try:
 
-                    files = {
-                        "file": (
-                            uploaded_file.name,
-                            uploaded_file.getvalue(),
-                            "application/pdf"
+                    files = []
+
+                    for file in uploaded_file:
+
+                        files.append(
+                            (
+                                "files",
+                                (
+                                    file.name,
+                                    file.getvalue(),
+                                    "application/pdf"
+                                )
+                            )
                         )
-                    }
 
                     response = requests.post(
                         f"{BACKEND_URL}/upload-document",
@@ -124,11 +166,15 @@ if uploaded_file is not None:
                     result = response.json()
 
                     if result.get("status") == "success":
-                        st.success("Document ready for Q&A")
+
+                        st.success(
+                            "Documents ready for question answering"
+                        )
+
                         st.session_state.uploaded = True
 
                     else:
-                        st.error("Failed to process document")
+                        st.error("Failed to process documents")
 
                 except Exception as e:
                     st.error(f"Error: {str(e)}")
@@ -143,6 +189,7 @@ if st.session_state.summary:
     st.subheader("📌 Document Summary")
 
     with st.expander("View Summary", expanded=True):
+
         st.write(st.session_state.summary)
 
 
@@ -152,16 +199,21 @@ if st.session_state.summary:
 
 st.divider()
 
-st.subheader("💬 Ask Questions About Uploaded Document")
+st.subheader("💬 Ask Questions About Uploaded Documents")
 
 query = st.text_input(
     "Enter your question"
 )
 
 
+# ======================================
+# 🔹 ASK QUESTION
+# ======================================
+
 if st.button("Ask Question"):
 
     if not query:
+
         st.warning("Please enter a question")
 
     else:
@@ -181,15 +233,77 @@ if st.button("Ask Question"):
 
                 result = response.json()
 
-                st.subheader("🤖 Answer")
-                st.write(result.get("answer", "No answer generated"))
+                # ==========================
+                # 🔹 ANSWER
+                # ==========================
 
-                st.info(f"Tool Used: {result.get('tool_used', 'RAG')}")
+                st.subheader("🤖 Answer")
+
+                st.write(
+                    result.get(
+                        "answer",
+                        "No answer generated"
+                    )
+                )
+
+                # ==========================
+                # 🔹 TOOL USED
+                # ==========================
+
+                st.info(
+                    f"Tool Used: "
+                    f"{result.get('tool_used', 'RAG')}"
+                )
+
+                # ==========================
+                # 🔹 ANSWER QUALITY
+                # ==========================
 
                 if "answer_quality" in result:
+
                     st.success(
-                        f"Answer Quality: {result['answer_quality']}"
+                        f"Answer Quality: "
+                        f"{result['answer_quality']}"
                     )
 
+                # ==========================
+                # 🔹 SOURCES
+                # ==========================
+
+                if "sources" in result:
+
+                    st.subheader("📚 Sources")
+
+                    sources = result["sources"]
+
+                    shown = set()
+
+                    for source in sources:
+
+                        if isinstance(source, dict):
+
+                            src = source.get("source", "Unknown")
+                            page = source.get("page", "N/A")
+
+                            key = f"{src}-{page}"
+
+                            if key not in shown:
+
+                                st.write(
+                                    f"• {src} "
+                                    f"(Page {page})"
+                                )
+
+                                shown.add(key)
+
+                # ==========================
+                # 🔹 RAW TOOL OUTPUT
+                # ==========================
+
+                with st.expander("View Raw Tool Output"):
+
+                    st.json(result)
+
             except Exception as e:
+
                 st.error(f"Error: {str(e)}")
