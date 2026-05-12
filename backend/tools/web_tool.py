@@ -69,7 +69,7 @@ def format_web_results(results):
     return output.strip()
     '''
 # backend/tools/web_tool.py
-
+'''
 import requests
 
 
@@ -167,3 +167,46 @@ def format_web_output(response: dict) -> str:
         return f"Web search error: {response['error']}"
 
     return "No useful web information found for this query."
+'''
+
+# backend/tools/web_tool.py
+from duckduckgo_search import DDGS
+
+def web_search(query: str, max_results: int = 4) -> dict:
+    """
+    Searches the web using DuckDuckGo full-text search.
+    Returns structured results ready to inject into an LLM prompt.
+    """
+    try:
+        with DDGS() as ddgs:
+            raw = list(ddgs.text(query, max_results=max_results))
+
+        results = [
+            {
+                "title": r.get("title", ""),
+                "body":  r.get("body", ""),
+                "link":  r.get("href", ""),
+            }
+            for r in raw
+        ]
+
+        return {"tool": "web_search", "query": query, "results": results}
+
+    except Exception as e:
+        return {"tool": "web_search", "query": query, "results": [], "error": str(e)}
+
+
+def format_web_results(search_response: dict) -> str:
+    """
+    Converts web search results into a plain-text block
+    that can be injected directly into the LLM's prompt.
+    """
+    results = search_response.get("results", [])
+    if not results:
+        return "Web search returned no results."
+
+    lines = [f"Web search results for: {search_response['query']}\n"]
+    for i, r in enumerate(results, 1):
+        lines.append(f"[{i}] {r['title']}\n{r['body']}\nSource: {r['link']}\n")
+
+    return "\n".join(lines)

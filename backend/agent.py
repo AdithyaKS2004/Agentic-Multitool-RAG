@@ -5,7 +5,9 @@ import ollama
 from backend.tools.rag_tool import rag_tool
 from backend.tools.web_tool import web_search
 from backend.tools.summarizer_tool import summarizer_tool
+import re
 
+from backend.tools.calculator_tool import calculator_tool
 from backend.config import OLLAMA_MODEL
 from backend.memory import save_memory, get_memory
 
@@ -35,12 +37,36 @@ def ask_llm(prompt: str):
 
 def choose_tool(query: str):
 
-    # Faster rule-based routing
-    # avoids unnecessary LLM latency
+    query_lower = query.lower().strip()
 
-    query_lower = query.lower()
+# ======================================
+# 🔹 CALCULATOR
+# ======================================
 
-    # 🔹 web queries
+    math_keywords = [
+        "sqrt",
+        "pow",
+        "calculate",
+        "square root"
+    ]
+
+    if any(word in query_lower for word in math_keywords):
+
+        return "CALCULATOR"
+
+    math_pattern = r'^[0-9a-zA-Z\\s\\+\\-\\*\\/\\(\\)\\.,]+$'
+
+    if re.match(math_pattern, query_lower):
+
+        # prevent normal sentences
+        if any(char.isdigit() for char in query_lower):
+
+            return "CALCULATOR"
+
+    # ======================================
+    # 🔹 WEB
+    # ======================================
+
     web_keywords = [
         "latest",
         "news",
@@ -50,7 +76,14 @@ def choose_tool(query: str):
         "update"
     ]
 
-    # 🔹 summarizer queries
+    if any(word in query_lower for word in web_keywords):
+
+        return "WEB"
+
+    # ======================================
+    # 🔹 SUMMARIZER
+    # ======================================
+
     summarizer_keywords = [
         "summarize",
         "summary",
@@ -58,22 +91,28 @@ def choose_tool(query: str):
         "brief"
     ]
 
-    # 🔹 comparison queries
-    comparison_keywords = [
+    if any(word in query_lower for word in summarizer_keywords):
+
+        return "SUMMARIZER"
+
+    # ======================================
+    # 🔹 COMPARISON
+    # ======================================
+
+    '''comparison_keywords = [
         "compare",
         "difference",
         "similarities"
     ]
 
-    # WEB
-    if any(word in query_lower for word in web_keywords):
-        return "WEB"
+    if any(word in query_lower for word in comparison_keywords):
 
-    # SUMMARIZER
-    if any(word in query_lower for word in summarizer_keywords):
-        return "SUMMARIZER"
+        return "COMPARISON"
+    '''
+    # ======================================
+    # 🔹 DEFAULT → RAG
+    # ======================================
 
-    # RAG by default
     return "RAG"
 
 
@@ -97,14 +136,20 @@ def generate_final_answer(query, tool_used, tool_output):
             )
 
             prompt = f"""
-            You are a highly accurate AI assistant.
+            You are a document-grounded AI assistant.
 
-            Answer the question ONLY using
-            the provided context.
+            Your task:
+            Rewrite the retrieved context into a clean,
+            well-structured answer.
 
-            DO NOT add outside knowledge.
-            DO NOT hallucinate.
-            DO NOT invent information.
+            IMPORTANT RULES:
+            - Use ONLY the retrieved context
+            - DO NOT add outside knowledge
+            - DO NOT invent information
+            - DO NOT expand beyond the context
+            - DO NOT hallucinate
+            - Keep the answer concise and accurate
+            - Preserve factual correctness
 
             User Question:
             {query}
@@ -112,16 +157,41 @@ def generate_final_answer(query, tool_used, tool_output):
             Retrieved Context:
             {retrieved_answer}
 
-            Instructions:
-            - give a detailed explanation
-            - structure answer clearly
-            - keep answer relevant
-            - include key points
-            - avoid repetition
+            Generate a clean answer using ONLY the context.
             """
 
             return ask_llm(prompt)
+        
+    # ======================================
+    # 🔹 WEB-GROUNDED GENERATION  ← ADD THIS
+    # ======================================
 
+    if tool_used == "WEB":                                      # ← ADD
+        web_results = ""                                        # ← ADD
+                                                                # ← ADD
+        if isinstance(tool_output, dict):                       # ← ADD
+            results = tool_output.get("results", [])            # ← ADD
+            for i, r in enumerate(results, 1):                  # ← ADD
+                web_results += (                                # ← ADD
+                    f"[{i}] {r.get('title', '')}\n"            # ← ADD
+                    f"{r.get('body', '')}\n"                   # ← ADD
+                    f"Source: {r.get('link', '')}\n\n"         # ← ADD
+                )                                               # ← ADD
+                                                                # ← ADD
+        prompt = f"""                                           
+        You are a highly accurate AI assistant.
+        Answer the question ONLY using the web search results below.
+        DO NOT use your training knowledge for factual claims.
+        DO NOT say 'as of my last update' — you have live results.
+        If results are insufficient, say so clearly.
+
+        User Question: {query}
+
+        Web Search Results:
+        {web_results}
+        """                                                     # ← ADD
+        return ask_llm(prompt)                                  # ← ADD
+    
     # ======================================
     # 🔹 OTHER TOOLS
     # ======================================
@@ -171,6 +241,10 @@ def execute_tool(tool, query):
 
             return summarizer_tool(query)
 
+        elif tool == "CALCULATOR":
+
+            return calculator_tool(query)
+
         else:
 
             return rag_tool(query)
@@ -181,8 +255,7 @@ def execute_tool(tool, query):
             "tool": tool,
             "error": str(e)
         }
-
-
+    
 # ======================================
 # 🔹 MAIN AGENT PIPELINE
 # ======================================
@@ -199,12 +272,42 @@ def agent(query: str):
     # ==========================
     tool_output = execute_tool(tool, query)
 
+    # ======================================
+    # 🔹 RAG FALLBACK TO WEB
+    # ======================================
+
+    if tool == "RAG":
+
+        # ensure tool output is dictionary
+        if isinstance(tool_output, dict):
+
+            # check relevance flag
+            relevant = tool_output.get(
+                "relevant",
+                True
+            )
+
+            # if uploaded docs are not relevant
+            if not relevant:
+
+                print(
+                    "RAG not relevant → switching to WEB"
+                )
+
+                # switch tool
+                tool = "WEB"
+
+                # execute web search instead
+                tool_output = execute_tool(
+                    tool,
+                    query
+                )
     # ==========================
     # STEP 3 → SIMPLE CONFIDENCE
     # ==========================
     quality = "GOOD"
 
-    if not tool_output:
+    if tool_output is None:
 
         quality = "LOW_CONFIDENCE"
 

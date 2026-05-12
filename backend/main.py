@@ -1,7 +1,7 @@
 from fastapi import FastAPI, UploadFile, File
 from pydantic import BaseModel
 from backend.rag_pipeline import load_vectorstore, retrieve_docs, generate_answer,hybrid_retrieve,load_all
-from backend.tools.calculator_tool import calculate
+from backend.tools.calculator_tool import calculator_tool
 from backend.tools.web_tool import web_search, format_web_results
 from backend.agent import agent
 import shutil
@@ -43,7 +43,7 @@ def handle_query(request: QueryRequest):
     tool = request.tool
 
     if tool == "calculator":
-        result = calculate(query)
+        result = calculator_tool(query)
         return {
             "answer": result,
             "sources": ["Calculator"]

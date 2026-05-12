@@ -123,13 +123,19 @@ def generate_answer(query, docs):
 
     scored_chunks = []
 
-    # ======================================
-    # 🔹 SCORE CHUNKS
-    # ======================================
-
     for doc in docs:
 
-        content = doc["content"]
+        # ======================================
+        # 🔹 HANDLE BOTH dict AND string
+        # ======================================
+
+        if isinstance(doc, dict):
+
+            content = doc.get("content", "")
+
+        else:
+
+            content = str(doc)
 
         content_lower = content.lower()
 
@@ -137,18 +143,22 @@ def generate_answer(query, docs):
 
         for word in query_words:
 
-            if query.lower() in content_lower:
-                keyword_score += 15
+            if word in content_lower:
+                keyword_score += 1
+
+        # exact phrase boost
+        if query.lower() in content_lower:
+            keyword_score += 15
+
         scored_chunks.append(
             (
                 keyword_score,
-                content,
-                doc
+                content
             )
         )
 
     # ======================================
-    # 🔹 SORT BY RELEVANCE
+    # 🔹 SORT
     # ======================================
 
     scored_chunks.sort(
@@ -157,18 +167,14 @@ def generate_answer(query, docs):
     )
 
     # ======================================
-    # 🔹 TAKE BEST CHUNKS
+    # 🔹 TAKE BEST
     # ======================================
 
-    best_chunks = scored_chunks[:2]
-
-    # ======================================
-    # 🔹 FORMAT ANSWER
-    # ======================================
+    best_chunks = scored_chunks[:3]
 
     answer_parts = []
 
-    for score, content, doc in best_chunks:
+    for score, content in best_chunks:
 
         clean = content.replace("\n", " ")
 

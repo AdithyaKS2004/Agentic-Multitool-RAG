@@ -10,8 +10,46 @@ import requests
 
 st.set_page_config(
     page_title="Agentic Multi-Tool RAG",
+    page_icon="🤖",
     layout="wide"
 )
+
+
+# ======================================
+# 🔹 HIDE STREAMLIT CLUTTER
+# ======================================
+
+st.markdown("""
+<style>
+
+/* Hide top-right menu */
+#MainMenu {
+    visibility: hidden;
+}
+
+/* Hide footer */
+footer {
+    visibility: hidden;
+}
+
+/* Hide header */
+header {
+    visibility: hidden;
+}
+
+/* Cleaner spacing */
+.block-container {
+    padding-top: 2rem;
+}
+
+/* Chat styling */
+.stChatMessage {
+    border-radius: 12px;
+    padding: 10px;
+}
+
+</style>
+""", unsafe_allow_html=True)
 
 
 # ======================================
@@ -34,59 +72,68 @@ if "summary" not in st.session_state:
 if "filenames" not in st.session_state:
     st.session_state.filenames = []
 
+if "messages" not in st.session_state:
+    st.session_state.messages = []
+
 
 # ======================================
 # 🔹 TITLE
 # ======================================
 
-st.title("📄 Agentic Multi-Tool RAG System")
+st.markdown("""
+# 🤖 Agentic Multi-Tool RAG System
 
-st.markdown(
-    """
-    Upload multiple PDF documents, generate summaries,
-    ask questions, and compare documents using AI.
-    """
-)
+### Intelligent Multi-Document Question Answering
+
+Supports:
+- Hybrid Retrieval
+- Agentic AI Routing
+- Multi-PDF QA
+- Web Search
+- Calculator Tool
+- Cross-Document Comparison
+""")
 
 
-# ======================================
-# 🔹 FILE UPLOADER
-# ======================================
-
-uploaded_file = st.file_uploader(
-    "Upload PDF Documents",
-    type=["pdf"],
-    accept_multiple_files=True
-)
+st.divider()
 
 
 # ======================================
-# 🔹 DISPLAY UPLOADED FILES
+# 🔹 SIDEBAR
 # ======================================
 
-if uploaded_file:
+with st.sidebar:
 
-    st.subheader("📂 Uploaded Documents")
+    st.header("📂 Upload Documents")
 
-    for file in uploaded_file:
-        st.write(f"• {file.name}")
+    uploaded_file = st.file_uploader(
+        "Upload PDF Documents",
+        type=["pdf"],
+        accept_multiple_files=True
+    )
 
+    st.divider()
 
-# ======================================
-# 🔹 DOCUMENT PROCESSING
-# ======================================
+    # ==========================
+    # 🔹 DISPLAY FILES
+    # ==========================
 
-if uploaded_file:
+    if uploaded_file:
 
-    col1, col2 = st.columns(2)
+        st.subheader("Uploaded PDFs")
+
+        for file in uploaded_file:
+            st.write(f"• {file.name}")
+
+    st.divider()
 
     # ==========================
     # 🔹 GENERATE SUMMARY
     # ==========================
 
-    with col1:
+    if uploaded_file:
 
-        if st.button("Generate Summary"):
+        if st.button("📌 Generate Summary"):
 
             with st.spinner("Generating summary..."):
 
@@ -114,31 +161,29 @@ if uploaded_file:
 
                     result = response.json()
 
-                    st.session_state.uploaded = True
                     st.session_state.summary = result.get(
                         "summary",
                         "No summary generated"
                     )
 
-                    st.session_state.filenames = [
-                        file.name for file in uploaded_file
-                    ]
-
-                    st.success("Summary generated successfully")
+                    st.success(
+                        "Summary generated successfully"
+                    )
 
                 except Exception as e:
+
                     st.error(f"Error: {str(e)}")
 
     # ==========================
-    # 🔹 PROCESS FOR QA
+    # 🔹 ENABLE QA
     # ==========================
 
-    with col2:
+    if uploaded_file:
 
-        if st.button("Enable Document QA"):
+        if st.button("🚀 Enable Document QA"):
 
             with st.spinner(
-                "Preparing documents for question answering..."
+                "Preparing documents..."
             ):
 
                 try:
@@ -168,57 +213,96 @@ if uploaded_file:
                     if result.get("status") == "success":
 
                         st.success(
-                            "Documents ready for question answering"
+                            "Documents ready for QA"
                         )
 
                         st.session_state.uploaded = True
 
                     else:
-                        st.error("Failed to process documents")
+
+                        st.error(
+                            "Failed to process documents"
+                        )
 
                 except Exception as e:
+
                     st.error(f"Error: {str(e)}")
+
+    st.divider()
+
+    # ==========================
+    # 🔹 CLEAR CHAT
+    # ==========================
+
+    if st.button("🗑️ Clear Chat"):
+
+        st.session_state.messages = []
+
+        st.rerun()
 
 
 # ======================================
-# 🔹 DISPLAY SUMMARY
+# 🔹 SUMMARY SECTION
 # ======================================
 
 if st.session_state.summary:
 
-    st.subheader("📌 Document Summary")
+    with st.expander(
+        "📌 View Document Summary",
+        expanded=False
+    ):
 
-    with st.expander("View Summary", expanded=True):
-
-        st.write(st.session_state.summary)
+        st.write(
+            st.session_state.summary
+        )
 
 
 # ======================================
-# 🔹 QUESTION ANSWERING
+# 🔹 CHAT HISTORY
 # ======================================
 
-st.divider()
+for message in st.session_state.messages:
 
-st.subheader("💬 Ask Questions About Uploaded Documents")
+    with st.chat_message(message["role"]):
 
-query = st.text_input(
-    "Enter your question"
+        st.markdown(message["content"])
+
+
+# ======================================
+# 🔹 CHAT INPUT
+# ======================================
+
+query = st.chat_input(
+    "Ask questions about your documents..."
 )
 
 
 # ======================================
-# 🔹 ASK QUESTION
+# 🔹 HANDLE QUERY
 # ======================================
 
-if st.button("Ask Question"):
+if query:
 
-    if not query:
+    # ==========================
+    # 🔹 USER MESSAGE
+    # ==========================
 
-        st.warning("Please enter a question")
+    st.session_state.messages.append({
+        "role": "user",
+        "content": query
+    })
 
-    else:
+    with st.chat_message("user"):
 
-        with st.spinner("Generating answer..."):
+        st.markdown(query)
+
+    # ==========================
+    # 🔹 ASSISTANT RESPONSE
+    # ==========================
+
+    with st.chat_message("assistant"):
+
+        with st.spinner("Thinking..."):
 
             try:
 
@@ -233,74 +317,101 @@ if st.button("Ask Question"):
 
                 result = response.json()
 
+                answer = result.get(
+                    "answer",
+                    "No answer generated"
+                )
+
+                st.markdown(answer)
+
+                # save assistant response
+                st.session_state.messages.append({
+                    "role": "assistant",
+                    "content": answer
+                })
+
+                st.divider()
+
                 # ==========================
-                # 🔹 ANSWER
+                # 🔹 TOOL INFO
                 # ==========================
 
-                st.subheader("🤖 Answer")
+                col1, col2 = st.columns(2)
 
-                st.write(
-                    result.get(
-                        "answer",
-                        "No answer generated"
+                with col1:
+
+                    st.info(
+                        f"🛠️ Tool Used: "
+                        f"{result.get('tool_used', 'Unknown')}"
                     )
-                )
 
-                # ==========================
-                # 🔹 TOOL USED
-                # ==========================
-
-                st.info(
-                    f"Tool Used: "
-                    f"{result.get('tool_used', 'RAG')}"
-                )
-
-                # ==========================
-                # 🔹 ANSWER QUALITY
-                # ==========================
-
-                if "answer_quality" in result:
+                with col2:
 
                     st.success(
-                        f"Answer Quality: "
-                        f"{result['answer_quality']}"
+                        f"✅ Quality: "
+                        f"{result.get('answer_quality', 'GOOD')}"
                     )
 
                 # ==========================
                 # 🔹 SOURCES
                 # ==========================
 
-                if "sources" in result:
+                if "tool_output" in result:
 
-                    st.subheader("📚 Sources")
+                    tool_output = result["tool_output"]
 
-                    sources = result["sources"]
+                    if isinstance(tool_output, dict):
 
-                    shown = set()
+                        sources = tool_output.get(
+                            "sources",
+                            []
+                        )
 
-                    for source in sources:
+                        if sources:
 
-                        if isinstance(source, dict):
+                            with st.expander(
+                                "📚 Sources Used",
+                                expanded=False
+                            ):
 
-                            src = source.get("source", "Unknown")
-                            page = source.get("page", "N/A")
+                                shown = set()
 
-                            key = f"{src}-{page}"
+                                for source in sources:
 
-                            if key not in shown:
+                                    if isinstance(
+                                        source,
+                                        dict
+                                    ):
 
-                                st.write(
-                                    f"• {src} "
-                                    f"(Page {page})"
-                                )
+                                        src = source.get(
+                                            "source",
+                                            "Unknown"
+                                        )
 
-                                shown.add(key)
+                                        page = source.get(
+                                            "page",
+                                            "N/A"
+                                        )
+
+                                        key = f"{src}-{page}"
+
+                                        if key not in shown:
+
+                                            st.write(
+                                                f"• {src} "
+                                                f"(Page {page})"
+                                            )
+
+                                            shown.add(key)
 
                 # ==========================
-                # 🔹 RAW TOOL OUTPUT
+                # 🔹 DEBUG OUTPUT
                 # ==========================
 
-                with st.expander("View Raw Tool Output"):
+                with st.expander(
+                    "⚙️ Debug Info",
+                    expanded=False
+                ):
 
                     st.json(result)
 
