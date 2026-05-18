@@ -1,11 +1,20 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, UploadFile, File
 from pydantic import BaseModel
 from backend.rag_pipeline import load_vectorstore, retrieve_docs, generate_answer,hybrid_retrieve,load_all
-from backend.tools.calculator_tool import calculate
+from backend.tools.calculator_tool import calculator_tool
 from backend.tools.web_tool import web_search, format_web_results
+from backend.agent import agent
+import shutil
+import os 
+from backend.tools.realtime_summarizer import summarize_uploaded_document
+from backend.temp_rag import process_uploaded_document
 
 vectorstore, bm25, texts = load_all()
-
+#docs = hybrid_retrieve(query, vectorstore, bm25, texts)
+#answer = generate_answer(query, docs)
+from backend.tools.realtime_summarizer import (
+    summarize_uploaded_document
+)
 
 app = FastAPI()
 
@@ -18,39 +27,11 @@ class QueryRequest(BaseModel):
     query: str
     tool: str = "rag"   # default (optional but useful)
 
-'''
-# ✅ Route
-@app.post("/query")
-def handle_query(request: QueryRequest):
-    
-    query = request.query
-    tool = request.tool
-
-    # ✅ RAG flow
-    if tool == "rag":
-        docs = retrieve_docs(vectorstore, query)
-
-        if not docs:
-            return {
-                "answer": "No relevant documents found",
-                "sources": []
-            }
-
-        context = "\n\n".join([d.page_content for d in docs])
-
-        return {
-            "answer": context[:500],  # temporary (will replace with LLM later)
-            "sources": ["PDF"]
-        }
-
-    # ✅ fallback
-    return {
-        "answer": f"Tool '{tool}' not implemented yet",
-        "sources": []
-    }'''
 
 
-
+@app.get("/ask")
+def ask(query: str):
+    return agent(query)
 
 
 
@@ -62,7 +43,7 @@ def handle_query(request: QueryRequest):
     tool = request.tool
 
     if tool == "calculator":
-        result = calculate(query)
+        result = calculator_tool(query)
         return {
             "answer": result,
             "sources": ["Calculator"]
@@ -91,4 +72,68 @@ def handle_query(request: QueryRequest):
         "answer": "Tool not implemented yet",
         "sources": []
     }
+
+# ======================================
+# 🔹 PDF UPLOAD + SUMMARY
+# ======================================
+
+@app.post("/upload-summary")
+async def upload_summary(files: list[UploadFile] = File(...)):
+
+    os.makedirs("uploads", exist_ok=True)
+
+    uploaded_files = []
+
+    combined_text = ""
+
+    for file in files:
+
+        file_path = f"uploads/{file.filename}"
+
+        with open(file_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+
+        uploaded_files.append(file.filename)
+
+        # summarize each file
+        result = summarize_uploaded_document(file_path)
+
+        combined_text += f"\n\n=== {file.filename} ===\n"
+        combined_text += result["summary"]
+
+    return {
+        "status": "success",
+        "files_uploaded": uploaded_files,
+        "summary": combined_text
+    }
+@app.post("/upload-document")
+async def upload_document(files: list[UploadFile] = File(...)):
+
+    os.makedirs("uploads", exist_ok=True)
+
+    uploaded_files = []
+
+    for file in files:
+
+        file_path = f"uploads/{file.filename}"
+
+        with open(file_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+
+        uploaded_files.append(file.filename)
+
+    # process ALL uploaded PDFs
+    process_uploaded_document("uploads")
+
+    return {
+        "status": "success",
+        "files_uploaded": uploaded_files
+    }
+
+@app.post("/ask-document")
+async def ask_document(request: QueryRequest):
+
+    response = agent(request.query)
+
+    return response
 

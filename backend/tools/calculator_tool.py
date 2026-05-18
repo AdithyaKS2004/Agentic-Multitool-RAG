@@ -2,16 +2,31 @@
 
 import math
 
-def calculate(expression: str):
+
+def calculator_tool(query):
+
     try:
-        # Safe eval (restricted)
-        allowed_names = {
+
+        # safe math environment
+        allowed = {
+            "__builtins__": {},
             "sqrt": math.sqrt,
-            "pow": math.pow
+            "pow": pow,
+            "abs": abs,
+            "round": round
         }
 
-        result = eval(expression, {"__builtins__": {}}, allowed_names)
-        return str(result)
+        result = eval(query, allowed)
 
-    except Exception:
-        return "Invalid calculation"
+        return {
+            "tool": "CALCULATOR",
+            "query": query,
+            "answer": str(result)
+        }
+
+    except Exception as e:
+
+        return {
+            "tool": "CALCULATOR",
+            "error": str(e)
+        }
