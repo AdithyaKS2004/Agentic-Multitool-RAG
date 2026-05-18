@@ -22,7 +22,7 @@ st.set_page_config(
 st.markdown("""
 <style>
 
-/* Hide top-right menu */
+/* Hide Streamlit menu */
 #MainMenu {
     visibility: hidden;
 }
@@ -32,9 +32,9 @@ footer {
     visibility: hidden;
 }
 
-/* Hide header */
+/* KEEP header visible so sidebar toggle works */
 header {
-    visibility: hidden;
+    visibility: visible;
 }
 
 /* Cleaner spacing */
@@ -50,7 +50,6 @@ header {
 
 </style>
 """, unsafe_allow_html=True)
-
 
 # ======================================
 # 🔹 BACKEND URL
@@ -275,7 +274,9 @@ for message in st.session_state.messages:
 query = st.chat_input(
     "Ask questions about your documents..."
 )
-
+st.caption(
+    "Example: Compare NLP and AI approaches"
+)
 
 # ======================================
 # 🔹 HANDLE QUERY

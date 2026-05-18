@@ -6,6 +6,9 @@ from backend.tools.rag_tool import rag_tool
 from backend.tools.web_tool import web_search
 from backend.tools.summarizer_tool import summarizer_tool
 import re
+from backend.tools.comparison_tool import (
+    comparison_tool
+)
 
 from backend.tools.calculator_tool import calculator_tool
 from backend.config import OLLAMA_MODEL
@@ -99,16 +102,18 @@ def choose_tool(query: str):
     # 🔹 COMPARISON
     # ======================================
 
-    '''comparison_keywords = [
+    comparison_keywords = [
         "compare",
         "difference",
-        "similarities"
+        "differences",
+        "similarities",
+        "similar",
+        "contrast"
     ]
 
     if any(word in query_lower for word in comparison_keywords):
 
         return "COMPARISON"
-    '''
     # ======================================
     # 🔹 DEFAULT → RAG
     # ======================================
@@ -244,6 +249,10 @@ def execute_tool(tool, query):
         elif tool == "CALCULATOR":
 
             return calculator_tool(query)
+        
+        elif tool == "COMPARISON":
+            
+            return comparison_tool(query)
 
         else:
 
